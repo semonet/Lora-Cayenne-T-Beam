@@ -5,6 +5,7 @@ This Fork from Bjoerns-TB, forked from DeuxVis, supports OLED display on the I²
 This is a simple sketch demonstrating the capability of the [TTGO T-Beam](https://www.aliexpress.com/store/product/TTGO-T-Beam-ESP32-433-868-915Mhz-WiFi-wireless-Bluetooth-Module-ESP-32-GPS-NEO-6M/2090076_32875743018.html) as a [TTN Mapper](https://ttnmapper.org/) Node on [The Things Network](https://www.thethingsnetwork.org/) LoraWAN.
 
 Derived from [sbiermann/Lora-TTNMapper-ESP32](https://github.com/sbiermann/Lora-TTNMapper-ESP32) and with some information/inspiration from [cyberman54/ESP32-Paxcounter](https://github.com/cyberman54/ESP32-Paxcounter) and [Edzelf/LoRa](https://github.com/Edzelf/LoRa).
+The forked repo from hottimuc was converted to a PlatformIO project (currently only for hardware revision >= 0.8).
 
 ## New features
 
@@ -21,7 +22,7 @@ Derived from [sbiermann/Lora-TTNMapper-ESP32](https://github.com/sbiermann/Lora-
 
 ## Software dependencies
 
-Arduino IDE [ESP32 extension](https://github.com/espressif/arduino-esp32)
+[PlatformIO](https://platformio.org/)
 
 [TinyGPS++](http://arduiniana.org/libraries/tinygpsplus/)
 
@@ -31,8 +32,7 @@ Arduino IDE [ESP32 extension](https://github.com/espressif/arduino-esp32)
 
 You can program the T-Beam using the [Arduino ESP32](https://github.com/espressif/arduino-esp32) board 't-beam'.
 
-It is suitable for t-beam HW-Version up to V07 (use folder "uptoV07") and higher versions with Soft-Power-Button (use folder "fromV08").
-For version V08 and higher you also need [this library](https://github.com/lewisxhe/AXP202X_Library) from Lewis He.
+You also need [this library](https://github.com/lewisxhe/AXP202X_Library) from Lewis He.
 
 On The Things Network side, the settings needed are available [here](https://www.thethingsnetwork.org/docs/applications/ttnmapper/).
 
