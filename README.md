@@ -1,6 +1,8 @@
 ## Intro
 
-Fork from a fork. Fixed OTAA and added basic Cayenne support.
+In this Fork: 
+1. Fixed OTAA
+2. Added basic Cayenne support
 
 This Fork from Bjoerns-TB, forked from DeuxVis, supports OLED display on the I²C interface on GPIO22 and GPI21. This repo contains a patched SSD1306 library from [smartnick](https://github.com/smartinick/Adafruit_SSD1306), enabling individual I²C pins and to set I²C Clock to 800kHz.
 
@@ -38,7 +40,7 @@ You also need [this library](https://github.com/lewisxhe/AXP202X_Library) from L
 
 On The Things Network side, the settings needed are available [here](https://www.thethingsnetwork.org/docs/applications/ttnmapper/).
 
-Configure the Payload decoder with:
+Configure the Payload decoder with the following code for TTNMapper or select Cayenne LPP for Cayenne:
 ```javascript
 function Decoder(bytes, port) {
     var decoded = {};
@@ -65,3 +67,5 @@ function Decoder(bytes, port) {
     return decoded;
 }
 ```
+
+
