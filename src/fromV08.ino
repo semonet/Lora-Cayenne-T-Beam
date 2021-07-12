@@ -1,3 +1,8 @@
+//#define LMIC_DEBUG_LEVEL 1
+//#define OSTICKS_PER_SEC 50000
+//#define DISABLE_PING
+//#define DISABLE_BEACONS
+
 #include <lmic.h>
 #include <hal/hal.h>
 #include <WiFi.h>
@@ -11,6 +16,10 @@
 #include "gpsicon.h"
 #include "Adafruit_GFX.h"
 #include "Adafruit_SSD1306.h"
+#include "TTN_CayenneLPP.h"
+
+//#define LMIC_DR_LEGACY 1
+//#include "lmic/lorabase.h"
 
 // T-Beam specific hardware
 #define SELECT_BTN 38
@@ -25,6 +34,7 @@ bool  axpIrq = 0;
 const uint8_t axp_irq_pin = 35;
 
 String LoraStatus;
+TTN_CayenneLPP lpp;
 
 int TX_Mode = 0;
 int TX_Interval_Mode = 0;
@@ -71,9 +81,14 @@ const lmic_pinmap lmic_pins = {
 };
 
 void do_send(osjob_t* j) {  
-
+  // added for otaa
+  if(LoraStatus == "EV_JOINING"){
+    Serial.println(F("Not joined yet"));
+    // Check if there is not a current TX/RX job running
+    os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL), do_send);
+  } else if (LMIC.opmode & OP_TXRXPEND)
   // Check if there is not a current TX/RX job running
-  if (LMIC.opmode & OP_TXRXPEND)
+  //if (LMIC.opmode & OP_TXRXPEND)
   {
     Serial.println(F("OP_TXRXPEND, not sending"));
     LoraStatus = "OP_TXRXPEND, not sending";
@@ -83,8 +98,15 @@ void do_send(osjob_t* j) {
     if (gps.checkGpsFix())
     {
       // Prepare upstream data transmission at the next possible time.
-      gps.buildPacket(txBuffer);
-      LMIC_setTxData2(port, txBuffer, sizeof(txBuffer), 0);
+      // For Cayenne
+      #ifdef CAYENNE  
+        lpp.reset();
+        lpp.addGPS(1,gps.tGps.location.lat(),gps.tGps.location.lng(), gps.tGps.altitude.meters());
+        LMIC_setTxData2(port, lpp.getBuffer(), lpp.getSize(), 0);
+      #else
+        gps.buildPacket(txBuffer);
+        LMIC_setTxData2(port, txBuffer, sizeof(txBuffer), 0);
+      #endif 
       Serial.println(F("Packet queued"));
       axp.setChgLEDMode(ledMode);
       LoraStatus = "Packet queued";
@@ -334,6 +356,15 @@ void onEvent (ev_t ev) {
         Serial.println(F("Received Ack"));
         LoraStatus = "Received Ack";
       }
+      if (LMIC.txrxFlags & TXRX_DNW1) {
+        Serial.println(F("Data on W1"));
+      }
+      if (LMIC.txrxFlags & TXRX_DNW2) {
+        Serial.println(F("Data on W2"));
+      }
+      if (LMIC.txrxFlags & TXRX_PING) {
+        Serial.println(F("Scheduled Ping"));
+      }
       if (LMIC.dataLen) {
         sprintf(s, "Received %i bytes of payload", LMIC.dataLen);
         Serial.println(s);
@@ -366,17 +397,34 @@ void onEvent (ev_t ev) {
       LoraStatus = "EV_LINK_ALIVE";
       break;
     default:
-      Serial.println(F("Unknown event"));
-      LoraStatus = "Unknown event";
+      //Serial.println(F("Unknown event"));
+      sprintf(s, "Unknown event: %d", ev);
+      Serial.println(s);
+      //LoraStatus = "Unknown event";
       break;
   }
 }
 
+/*void myRxCallback(void *pUserData, uint8_t port, const uint8_t *pMsg,
+                  size_t nMsg) {
+
+  // display amount of received data
+   Serial.println(F("######################################################"));
+    Serial.println(F("######################################################"));
+  if (nMsg)
+    ESP_LOGI(TAG, "Received %u byte(s) of payload on port %u", nMsg, port);
+  else if (port)
+    ESP_LOGI(TAG, "Received empty message on port %u", port);
+}*/
 
 
 void setup() {
   Serial.begin(115200);
+#ifdef CAYENNE  
+  Serial.println(F("Cayenne Tracker"));
+#else
   Serial.println(F("TTN Mapper"));
+#endif  
 
   Wire.begin(21, 22);
   if (!axp.begin(Wire, AXP192_SLAVE_ADDRESS)) {
@@ -433,7 +481,12 @@ void setup() {
   // set text cursor position / Textstartposition einstellen
   display.setCursor(1,16);
   // show text / Text anzeigen
+#ifdef CAYENNE  
+  display.print("Cayenne");
+#else
   display.print("TTN Mapper");
+#endif  
+  
   display.setCursor(0,32);
   display.print("\\/\\/\\/\\/\\/");
   display.setCursor(8,48);
@@ -463,8 +516,10 @@ void setup() {
   os_init();
   // Reset the MAC state. Session and pending data transfers will be discarded.
   LMIC_reset();
- 
-  LMIC_setClockError(MAX_CLOCK_ERROR * 10 / 100);
+
+  LMIC_setClockError(MAX_CLOCK_ERROR * 7 / 100);
+
+  
   #ifndef OTAA 
   LMIC_setSession (0x1, DEVADDR, NWKSKEY, APPSKEY);
   #endif
@@ -491,6 +546,8 @@ void setup() {
     }
   #endif
 
+  //LMIC_registerRxMessageCb(myRxCallback, NULL);
+
   // Disable link check validation
   LMIC_setLinkCheckMode(0);
   // Disable/Enable ADR 
@@ -504,7 +561,7 @@ void setup() {
 
   // Set Interval-Text corresponding to current setting
   iv_set();
-  
+
   do_send(&sendjob);
   axp.setChgLEDMode(AXP20X_LED_OFF);
   display.clearDisplay();
@@ -513,153 +570,161 @@ void setup() {
 }
 
 void loop() {
-  // AXP powermanagement IRQ-handling
-  if (axpIrq) {
-      Serial.println("AXP IRQ!");
-      axpIrq = 0;
-      axp.readIRQ();
-      if (axp.isPEKLongtPressIRQ()) {
-          // switch LED off
-          axp.setChgLEDMode(AXP20X_LED_OFF);
-          delay(5000);
-      }
-      if (axp.isPEKShortPressIRQ()) {
-        Serial.printf("AXP202 PEK key Short\n");
-        // reduce display-voltage
-        if (isDimmed) {
-          isDimmed = false;
-          axp.setDCDC1Voltage(3300);
-          ledMode = AXP20X_LED_LOW_LEVEL;           
-        } else {
-          isDimmed = true;
-          axp.setDCDC1Voltage(1700); 
-          ledMode = AXP20X_LED_OFF;           
-        }
-          
-      }      
-      axp.clearIRQ();
-  }
-  
-  gps.encode();
-  sf_select();
-  if (lastMillis + 1000 < millis())
-  {
-    lastMillis = millis();
-    VBAT = axp.getBattVoltage()/1000;
-    
+  //added for otaa to work
+  if(LoraStatus == "EV_JOINING"){
+    //Serial.printf("os_runloop_once()\n");
     os_runloop_once();
-    if (gps.checkGpsFix())
-    { 
-      GPSonceFixed = true;
-      noFix = false;
-      gps.gdisplay(txBuffer2);
-      float hdop = txBuffer2[4] / 10.0;
-      display.clearDisplay();
-      display.setTextColor(WHITE);
-      display.setTextSize(1);
-      display.setCursor(0,0);
-      display.print("SAT: " + String(txBuffer2[0]));
-      display.setCursor(104,0);
-      display.print(VBAT,1);
-      display.setCursor(122,0);
-      // display charging-state
-      if (axp.isChargeing())
-      {
-        display.print("V");
-      } else {
-        display.print("v");
-      }
-      display.setCursor(0,10);
-      display.print("Speed: " + String(txBuffer2[1])+ " km/h");
-      display.setCursor(0,20);
-      display.print("Course: " + String(txBuffer2[2])+(char)247);
-      display.setCursor(0,30);
-      display.print("Alt: " + String(txBuffer2[3])+ "m");
-      display.setCursor(0,40);
-      display.print("HDOP: ");
-      display.setCursor(35,40);
-      display.print(hdop,1);
-      display.setCursor(80,20); // SF and TXpow
-      display.print(sd);
-      display.setCursor(80,30); // Interval
-      display.print("Iv: ");
-      display.print(iv);
-      display.setCursor(80,40); // up packet number
-      display.print("Up: " + String(LMIC.seqnoUp-1));
-      display.drawLine(0, 48, display.width(), 48, WHITE);
-      display.setCursor(0,54);
-      display.print("LoRa: ");
-      display.setCursor(35,54);
-      display.print(LoraStatus);
-      if (gps.tGps.time.isValid())
-      {
-        display.setCursor(48,0);
-        if (gps.tGps.time.hour() < 10) display.print("0");
-        display.print(gps.tGps.time.hour());
-        display.print(":");
-        if (gps.tGps.time.minute() < 10) display.print("0");
-        display.print(gps.tGps.time.minute());
-        display.print(":");
-        if (gps.tGps.time.second() < 10) display.print("0");
-        display.print(gps.tGps.time.second());
-      }
-    } else {
-      noFix = true;
-      display.clearDisplay();
-      display.setTextColor(WHITE);
-      display.setTextSize(2);
-      display.setCursor(0,16);
-      // change wording after first successful fix
-      if (GPSonceFixed)
-      {
-        display.print("Lost");
-      } else {
-        display.print("Missing");
-      }
-      display.setCursor(0,32);
-      display.print("GPS fix");
-      display.setCursor(0,48); // SF and TXpow
-      display.print(sd);
-      display.setTextSize(1);
-      display.setCursor(104,0);
-      display.print(VBAT,1);
-      display.setCursor(122,0);
-      // display charging-state
-      if (axp.isChargeing())
-      {
-        display.print("V");
-      } else {
-        display.print("v");
-      }
-    }
-    redraw = true;
   }
-  if ((lastMillis2 + 500 < millis()) || redraw)
+  else
   {
-    lastMillis2 = millis();
-    if (noFix)
+    // AXP powermanagement IRQ-handling
+    if (axpIrq) {
+        Serial.println("AXP IRQ!");
+        axpIrq = 0;
+        axp.readIRQ();
+        if (axp.isPEKLongtPressIRQ()) {
+            // switch LED off
+            axp.setChgLEDMode(AXP20X_LED_OFF);
+            delay(5000);
+        }
+        if (axp.isPEKShortPressIRQ()) {
+          Serial.printf("AXP202 PEK key Short\n");
+          // reduce display-voltage
+          if (isDimmed) {
+            isDimmed = false;
+            axp.setDCDC1Voltage(3300);
+            ledMode = AXP20X_LED_LOW_LEVEL;           
+          } else {
+            isDimmed = true;
+            axp.setDCDC1Voltage(1700); 
+            ledMode = AXP20X_LED_OFF;           
+          }
+            
+        }      
+        axp.clearIRQ();
+    }
+    
+    gps.encode();
+    sf_select();
+    if (lastMillis + 1000 < millis())
     {
-      blinkGps = 1-blinkGps;
-      if (blinkGps == 1)
-      {
-        display.fillRect((display.width()  - imageWidthGpsIcon ), (display.height() - imageHeightGpsIcon), imageWidthGpsIcon, imageHeightGpsIcon, 0);
-        display.drawBitmap(
-                            (display.width()  - imageWidthGpsIcon ),
-                            (display.height() - imageHeightGpsIcon),
-                            gpsIcon, imageWidthGpsIcon, imageHeightGpsIcon, 1);
+      lastMillis = millis();
+      VBAT = axp.getBattVoltage()/1000;
+      
+      os_runloop_once();
+      if (gps.checkGpsFix())
+      { 
+        GPSonceFixed = true;
+        noFix = false;
+        gps.gdisplay(txBuffer2);
+        float hdop = txBuffer2[4] / 10.0;
+        display.clearDisplay();
+        display.setTextColor(WHITE);
+        display.setTextSize(1);
+        display.setCursor(0,0);
+        display.print("SAT: " + String(txBuffer2[0]));
+        display.setCursor(104,0);
+        display.print(VBAT,1);
+        display.setCursor(122,0);
+        // display charging-state
+        if (axp.isChargeing())
+        {
+          display.print("V");
+        } else {
+          display.print("v");
+        }
+        display.setCursor(0,10);
+        display.print("Speed: " + String(txBuffer2[1])+ " km/h");
+        display.setCursor(0,20);
+        display.print("Course: " + String(txBuffer2[2])+(char)247);
+        display.setCursor(0,30);
+        display.print("Alt: " + String(txBuffer2[3])+ "m");
+        display.setCursor(0,40);
+        display.print("HDOP: ");
+        display.setCursor(35,40);
+        display.print(hdop,1);
+        display.setCursor(80,20); // SF and TXpow
+        display.print(sd);
+        display.setCursor(80,30); // Interval
+        display.print("Iv: ");
+        display.print(iv);
+        display.setCursor(80,40); // up packet number
+        display.print("Up: " + String(LMIC.seqnoUp-1));
+        display.drawLine(0, 48, display.width(), 48, WHITE);
+        display.setCursor(0,54);
+        display.print("LoRa: ");
+        display.setCursor(35,54);
+        display.print(LoraStatus);
+        if (gps.tGps.time.isValid())
+        {
+          display.setCursor(48,0);
+          if (gps.tGps.time.hour() < 10) display.print("0");
+          display.print(gps.tGps.time.hour());
+          display.print(":");
+          if (gps.tGps.time.minute() < 10) display.print("0");
+          display.print(gps.tGps.time.minute());
+          display.print(":");
+          if (gps.tGps.time.second() < 10) display.print("0");
+          display.print(gps.tGps.time.second());
+        }
       } else {
-        display.fillRect((display.width()  - imageWidthGpsIcon ), (display.height() - imageHeightGpsIcon), imageWidthGpsIcon, imageHeightGpsIcon, 0);
-        display.drawBitmap(
-                            (display.width()  - imageWidthGpsIcon ),
-                            (display.height() - imageHeightGpsIcon),
-                            gpsIcon2, imageWidthGpsIcon, imageHeightGpsIcon, 1);
+        noFix = true;
+        display.clearDisplay();
+        display.setTextColor(WHITE);
+        display.setTextSize(2);
+        display.setCursor(0,16);
+        // change wording after first successful fix
+        if (GPSonceFixed)
+        {
+          display.print("Lost");
+        } else {
+          display.print("Missing");
+        }
+        display.setCursor(0,32);
+        display.print("GPS fix");
+        display.setCursor(0,48); // SF and TXpow
+        display.print(sd);
+        display.setTextSize(1);
+        display.setCursor(104,0);
+        display.print(VBAT,1);
+        display.setCursor(122,0);
+        // display charging-state
+        if (axp.isChargeing())
+        {
+          display.print("V");
+        } else {
+          display.print("v");
+        }
       }
+      redraw = true;
     }
-    redraw = true;
-  }
-  if (redraw)
-  {
-    redraw = false;
-    display.display();
+    if ((lastMillis2 + 500 < millis()) || redraw)
+    {
+      lastMillis2 = millis();
+      if (noFix)
+      {
+        blinkGps = 1-blinkGps;
+        if (blinkGps == 1)
+        {
+          display.fillRect((display.width()  - imageWidthGpsIcon ), (display.height() - imageHeightGpsIcon), imageWidthGpsIcon, imageHeightGpsIcon, 0);
+          display.drawBitmap(
+                              (display.width()  - imageWidthGpsIcon ),
+                              (display.height() - imageHeightGpsIcon),
+                              gpsIcon, imageWidthGpsIcon, imageHeightGpsIcon, 1);
+        } else {
+          display.fillRect((display.width()  - imageWidthGpsIcon ), (display.height() - imageHeightGpsIcon), imageWidthGpsIcon, imageHeightGpsIcon, 0);
+          display.drawBitmap(
+                              (display.width()  - imageWidthGpsIcon ),
+                              (display.height() - imageHeightGpsIcon),
+                              gpsIcon2, imageWidthGpsIcon, imageHeightGpsIcon, 1);
+        }
+      }
+      redraw = true;
+    }
+    if (redraw)
+    {
+      redraw = false;
+      display.display();
+    }
   }
 }

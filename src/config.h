@@ -1,5 +1,6 @@
 // Comment the next line to use ABP authentication on TTN. Leave it as it is to use recommended OTAA
-//#define OTAA
+#define OTAA
+#define CAYENNE
 
 #ifndef LORA_TTNMAPPER_TBEAM_CONFIG_INCLUDED
 #define LORA_TTNMAPPER_TBEAM_CONFIG_INCLUDED
@@ -16,9 +17,19 @@ static const u1_t PROGMEM DEVEUI[8]={ 0x42, 0xE8, 0xA1, 0x55, 0x03, 0xFD, 0xEF, 
 static const u1_t PROGMEM APPEUI[8]={ 0x0B, 0xD8, 0x02, 0xD0, 0x7E, 0xD5, 0xB3, 0x70 }; // Application EUI, hex, lsb
 static const u1_t PROGMEM APPKEY[16] = { 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11 }; // App Key, hex, msb
 
-void os_getDevEui (u1_t* buf) { memcpy_P(buf, DEVEUI, 8);}
-void os_getArtEui (u1_t* buf) { memcpy_P(buf, APPEUI, 8);}
-void os_getDevKey (u1_t* buf) {  memcpy_P(buf, APPKEY, 16);}
+void os_getDevEui (u1_t* buf) { 
+    for (int i=0;i <8;i++){
+        buf[i] = DEVEUI[7-i];
+    }
+}
+void os_getArtEui (u1_t* buf) { 
+    for (int i=0;i <8;i++){
+        buf[i] = APPEUI[7-i];
+    }
+}
+void os_getDevKey (u1_t* buf) {  
+    memcpy_P(buf, APPKEY, 16);
+}
 #endif
 
 #endif //LORA_TTNMAPPER_TBEAM_CONFIG_INCLUDED
