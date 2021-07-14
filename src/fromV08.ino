@@ -15,7 +15,12 @@
 #include "gps.h"
 #include "gpsicon.h"
 #include "Adafruit_GFX.h"
-#include "Adafruit_SSD1306.h"
+#ifdef SH1106
+  #include "Adafruit_SH1106.h"
+#else
+  #include "Adafruit_SSD1306.h"
+#endif
+
 #include "TTN_CayenneLPP.h"
 
 //#define LMIC_DR_LEGACY 1
@@ -25,11 +30,19 @@
 #define SELECT_BTN 38
 
 #define OLED_RESET 4 // not used
-Adafruit_SSD1306 display(OLED_RESET);
+
+
+#ifdef SH1106
+  Adafruit_SH1106 display(OLED_RESET);
+#else
+  Adafruit_SSD1306 display(OLED_RESET);
+#endif
+
 
 // Powermanagement chip AXP192
 AXP20X_Class axp;
 bool  axpIrq = 0;
+#undef AXP192_SLAVE_ADDRESS
 #define AXP192_SLAVE_ADDRESS 0x34
 const uint8_t axp_irq_pin = 35;
 
@@ -472,7 +485,12 @@ void setup() {
   iv_set();
 
   pinMode(SELECT_BTN, INPUT);// UI Button
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C, 0, 21, 22, 800000);
+  #ifdef SH1106
+    display.begin(SH1106_SWITCHCAPVCC, 0x3C, true);
+  #else
+    display.begin(SSD1306_SWITCHCAPVCC, 0x3C, 0, 21, 22, 800000);
+  #endif
+  
   display.clearDisplay();
   // set text color / Textfarbe setzen
   display.setTextColor(WHITE);
