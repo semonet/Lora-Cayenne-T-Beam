@@ -15,6 +15,7 @@
 #include "gps.h"
 #include "gpsicon.h"
 #include "Adafruit_GFX.h"
+
 #ifdef SH1106
   #include "Adafruit_SH1106.h"
 #else
@@ -22,6 +23,9 @@
 #endif
 
 #include "TTN_CayenneLPP.h"
+#ifdef WITH_BMP180
+  #include <Adafruit_BMP085.h>
+#endif
 
 //#define LMIC_DR_LEGACY 1
 //#include "lmic/lorabase.h"
@@ -36,6 +40,10 @@
   Adafruit_SH1106 display(OLED_RESET);
 #else
   Adafruit_SSD1306 display(OLED_RESET);
+#endif
+
+#ifdef WITH_BMP180
+  Adafruit_BMP085 bmp;
 #endif
 
 
@@ -115,6 +123,10 @@ void do_send(osjob_t* j) {
       #ifdef CAYENNE  
         lpp.reset();
         lpp.addGPS(1,gps.tGps.location.lat(),gps.tGps.location.lng(), gps.tGps.altitude.meters());
+        #ifdef WITH_BMP180
+          lpp.addBarometricPressure(2,((float)bmp.readPressure())/100.0);
+          lpp.addTemperature(3,bmp.readTemperature());
+        #endif
         LMIC_setTxData2(port, lpp.getBuffer(), lpp.getSize(), 0);
       #else
         gps.buildPacket(txBuffer);
@@ -434,7 +446,7 @@ void onEvent (ev_t ev) {
 void setup() {
   Serial.begin(115200);
 #ifdef CAYENNE  
-  Serial.println(F("Cayenne Tracker"));
+  Serial.println(F("CAYENNE Tracker"));
 #else
   Serial.println(F("TTN Mapper"));
 #endif  
@@ -483,6 +495,14 @@ void setup() {
   TX_Interval_Mode = prefs.getString("IV_MODE", "0").toInt();
   prefs.end();
   iv_set();
+
+  #ifdef WITH_BMP180
+    if (bmp.begin(BMP085_STANDARD, &Wire)) {
+      Serial.println("BMP180 Begin PASS");
+    } else {
+      Serial.println("BMP180 Begin FAIL");
+    }
+  #endif
 
   pinMode(SELECT_BTN, INPUT);// UI Button
   #ifdef SH1106
@@ -628,6 +648,13 @@ void loop() {
     {
       lastMillis = millis();
       VBAT = axp.getBattVoltage()/1000;
+
+      #ifdef WITH_BMP180
+          sprintf(s, "Temperature: %f °C", bmp.readTemperature());
+          Serial.println(s);
+          sprintf(s, "Pressure: %f hPa", ((float)bmp.readPressure())/100.0);
+          Serial.println(s);
+      #endif
       
       os_runloop_once();
       if (gps.checkGpsFix())
@@ -652,7 +679,7 @@ void loop() {
           display.print("v");
         }
         display.setCursor(0,10);
-        display.print("Speed: " + String(txBuffer2[1])+ " km/h");
+        display.print(String(txBuffer2[1])+ " km/h " + String(bmp.readTemperature(),1) + (char)247+"C " + String(((float)bmp.readPressure())/100.0,0)+"hPa");
         display.setCursor(0,20);
         display.print("Course: " + String(txBuffer2[2])+(char)247);
         display.setCursor(0,30);
