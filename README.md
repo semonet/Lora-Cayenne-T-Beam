@@ -4,6 +4,7 @@ In this Fork:
 1. Fixed OTAA
 2. Added basic Cayenne support
 3. Added SH1106 Display support
+4. Added temperature / Pressure sensor support (Bosch bmp180)
 
 Already forked from Bjoerns-TB, forked from DeuxVis, supports OLED display on the I²C interface on GPIO22 and GPI21. This repo contains a patched SSD1306 library from [smartnick](https://github.com/smartinick/Adafruit_SSD1306), enabling individual I²C pins and to set I²C Clock to 800kHz.
 
