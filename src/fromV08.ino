@@ -679,7 +679,11 @@ void loop() {
           display.print("v");
         }
         display.setCursor(0,10);
+        #ifdef WITH_BMP180
         display.print(String(txBuffer2[1])+ " km/h " + String(bmp.readTemperature(),1) + (char)247+"C " + String(((float)bmp.readPressure())/100.0,0)+"hPa");
+        #else
+        display.print("Speed: " + String(txBuffer2[1])+ " km/h");
+        #endif
         display.setCursor(0,20);
         display.print("Course: " + String(txBuffer2[2])+(char)247);
         display.setCursor(0,30);
@@ -730,6 +734,10 @@ void loop() {
         display.setCursor(0,48); // SF and TXpow
         display.print(sd);
         display.setTextSize(1);
+        #ifdef WITH_BMP180
+          display.setCursor(0,0);
+          display.print(String(bmp.readTemperature(),1) + (char)247+"C " + String(((float)bmp.readPressure())/100.0,0)+"hPa");
+        #endif
         display.setCursor(104,0);
         display.print(VBAT,1);
         display.setCursor(122,0);
